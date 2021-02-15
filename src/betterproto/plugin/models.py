@@ -142,6 +142,7 @@ class ProtoContentBase:
     path: List[int]
     comment_indent: int = 4
     parent: Union["betterproto.Message", "OutputTemplate"]
+    input_file_name: str = PLACEHOLDER
 
     def __post_init__(self) -> None:
         """Checks that no fake default fields were left as placeholders."""
@@ -158,10 +159,8 @@ class ProtoContentBase:
 
     @property
     def proto_file(self) -> FieldDescriptorProto:
-        current = self
-        while not isinstance(current, OutputTemplate):
-            current = current.parent
-        return current.package_proto_obj
+        template = self.output_file
+        return template.input_files_dict[self.proto_input_file]
 
     @property
     def request(self) -> "PluginRequestCompiler":
@@ -211,7 +210,7 @@ class OutputTemplate:
 
     parent_request: PluginRequestCompiler
     package_proto_obj: FileDescriptorProto
-    input_files: List[str] = field(default_factory=list)
+    input_files: List[FileDescriptorProto] = field(default_factory=list)
     imports: Set[str] = field(default_factory=set)
     datetime_imports: Set[str] = field(default_factory=set)
     typing_imports: Set[str] = field(default_factory=set)
@@ -240,6 +239,17 @@ class OutputTemplate:
             Names of the input files used to build this output.
         """
         return [f.name for f in self.input_files]
+
+    @property
+    def input_files_dict(self) -> Dict[str, FileDescriptorProto]:
+        """Dictionary mapping filenames to their FileDescriptorProto objects
+
+        Returns
+        -------
+        Dict[str, FileDescriptorProto]
+            Dictionary mapping filenames to their FileDescriptorProto objects
+        """
+        return {f.name: f for f in self.input_files}
 
     @property
     def python_module_imports(self) -> Set[str]:
