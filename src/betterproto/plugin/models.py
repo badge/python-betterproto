@@ -338,17 +338,18 @@ class MessageCompiler(ProtoContentBase):
 
         pad = " " * self.comment_indent
         joined = get_comment(
-            proto_file=self.proto_file, path=self.path, indent=self.comment_indent, comment_out=False
+            proto_file=self.proto_file,
+            path=self.path,
+            indent=self.comment_indent,
+            comment_out=False,
         )
 
         if not joined:
             return ""
 
-        docstrings = "\n".join([
-            field.docstring
-            for field in self.fields
-            if hasattr(field, "docstring")
-        ])
+        docstrings = "\n".join(
+            [field.docstring for field in self.fields if hasattr(field, "docstring")]
+        )
 
         response = f'{pad}"""\n{pad}{joined}\n\n{pad}Parameters\n{pad}----------\n{pad}{docstrings}"""'
 
@@ -521,7 +522,10 @@ class FieldCompiler(MessageCompiler):
 
         pad = " " * self.comment_indent
         joined = get_comment(
-            proto_file=self.proto_file, path=self.path, indent=self.comment_indent + 4, comment_out=False
+            proto_file=self.proto_file,
+            path=self.path,
+            indent=self.comment_indent + 4,
+            comment_out=False,
         ).replace('"', "`")
 
         annotation = self.annotation.replace('"', "")
