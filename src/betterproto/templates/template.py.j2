@@ -42,7 +42,6 @@ class {{ enum.py_name }}(betterproto.Enum):
 class {{ message.py_name }}(betterproto.Message):
     {% if message.docstring %}
 {{ message.docstring }}
-
     {% endif %}
     {% for field in message.fields %}
     {{ field.get_field_string() }}
