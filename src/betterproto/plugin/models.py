@@ -134,31 +134,29 @@ def get_comment(
         Comment out the comment with `\"\"\"` on either end
     """
     pad = " " * indent
+    comments = []
 
     # Get leading and trailing comments, and remove newlines, being
     # careful not to concatenate words
     for sci in proto_file.source_code_info.location:
         if list(sci.path) == path:
             if sci.leading_comments:
-                leading_comment = (
+                comments.append(
                     sci.leading_comments.replace("\n", " ").replace("  ", " ").strip()
                 )
             if sci.trailing_comments:
-                trailing_comment = sci.trailing_comments.replace(
+                comments.append(sci.trailing_comments.replace(
                     "\n", " "
                 ).replace("  ", " ").strip()
     
     # Combine leading a trailing comments if necessary; if we have
     # neither return an empty string
-    if leading_comment:
-        if trailing_comment:
-            comment = leading_comment + " " + trailing_comment
-        else:
-            comment = leading_comment
-    elif trailing_comment:
-        comment = trailing_comment
-    else:
+    if len(comments) == 0:
         return ""
+    if len(comments) == 1:
+        comment = comments[0]
+    else:
+        comment = " ".join(comments)
 
     if not wrap and not comment_out:
         return comment
