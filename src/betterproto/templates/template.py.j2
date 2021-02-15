@@ -23,14 +23,11 @@ import grpclib
 
 {% if output_file.enums %}{% for enum in output_file.enums %}
 class {{ enum.py_name }}(betterproto.Enum):
-    {% if enum.comment %}
-{{ enum.comment }}
+    {% if enum.docstring %}
+{{ enum.docstring }}
 
     {% endif %}
     {% for entry in enum.entries %}
-        {% if entry.comment %}
-{{ entry.comment }}
-        {% endif %}
     {{ entry.name }} = {{ entry.value }}
     {% endfor %}
 
