@@ -133,7 +133,6 @@ def get_comment(
     comment_out : bool, default ``True``
         Comment out the comment with `\"\"\"` on either end
     """
-    comment = ""
     pad = " " * indent
 
     # Get leading and trailing comments, and remove newlines, being
@@ -141,21 +140,34 @@ def get_comment(
     for sci in proto_file.source_code_info.location:
         if list(sci.path) == path:
             if sci.leading_comments:
-                comment = (
-                    sci.leading_comments.strip().replace("\n", " ").replace("  ", " ")
+                leading_comment = (
+                    sci.leading_comments.replace("\n", " ").replace("  ", " ").strip()
                 )
             if sci.trailing_comments:
-                comment += " " + sci.trailing_comments.strip().replace(
+                trailing_comment = sci.trailing_comments.replace(
                     "\n", " "
-                ).replace("  ", " ")
+                ).replace("  ", " ").strip()
+    
+    # Combine leading a trailing comments if necessary; if we have
+    # neither return an empty string
+    if leading_comment:
+        if trailing_comment:
+            comment = leading_comment + " " + trailing_comment
+        else:
+            comment = leading_comment
+    elif trailing_comment:
+        comment = trailing_comment
+    else:
+        return ""
 
-    if (not wrap and not comment_out) or comment == "":
+    if not wrap and not comment_out:
         return comment
 
     # Comment out before wrapping, so we don't end up with a first or
     # last line with too many characters
     if comment_out:
-        comment = f'"""{pad}{comment}{pad}"""'
+        cmt = comment.replace('"', "`")
+        comment = f'"""{pad}{cmt}{pad}"""'
 
     if (len(comment) < 79 - indent) or not wrap:
         return comment
@@ -295,6 +307,7 @@ class MessageCompiler(ProtoContentBase):
     parent: Union["MessageCompiler", OutputTemplate] = PLACEHOLDER
     proto_obj: DescriptorProto = PLACEHOLDER
     path: List[int] = PLACEHOLDER
+    input_file_name: str = PLACEHOLDER
     fields: List[Union["FieldCompiler", "MessageCompiler"]] = field(
         default_factory=list
     )
@@ -340,7 +353,7 @@ class MessageCompiler(ProtoContentBase):
         joined = get_comment(
             proto_file=self.proto_file,
             path=self.path,
-            indent=self.comment_indent,
+            indent=0,
             comment_out=False,
         )
 
@@ -351,7 +364,7 @@ class MessageCompiler(ProtoContentBase):
             [field.docstring for field in self.fields if hasattr(field, "docstring")]
         )
 
-        response = f'{pad}"""\n{pad}{joined}\n\n{pad}Parameters\n{pad}----------\n{pad}{docstrings}"""'
+        response = f'{pad}"""{joined}\n\nParameters\n----------\n{docstrings}\n\n"""'
 
         return response
 
@@ -383,6 +396,7 @@ def is_oneof(proto_field_obj: FieldDescriptorProto) -> bool:
 class FieldCompiler(MessageCompiler):
     parent: MessageCompiler = PLACEHOLDER
     proto_obj: FieldDescriptorProto = PLACEHOLDER
+    input_file_name: str = PLACEHOLDER
 
     def __post_init__(self) -> None:
         # Add field to message
@@ -524,13 +538,13 @@ class FieldCompiler(MessageCompiler):
         joined = get_comment(
             proto_file=self.proto_file,
             path=self.path,
-            indent=self.comment_indent + 4,
+            indent=self.comment_indent,
             comment_out=False,
-        ).replace('"', "`")
+        )
 
         annotation = self.annotation.replace('"', "")
 
-        return f"{pad}{self.py_name} : {annotation}\n{joined}"
+        return f"{self.py_name} : {annotation}\n{pad}{joined}"
 
 
 @dataclass
@@ -630,6 +644,7 @@ class ServiceCompiler(ProtoContentBase):
     parent: OutputTemplate = PLACEHOLDER
     proto_obj: DescriptorProto = PLACEHOLDER
     path: List[int] = PLACEHOLDER
+    input_file_name: str = PLACEHOLDER
     methods: List["ServiceMethodCompiler"] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -653,6 +668,7 @@ class ServiceMethodCompiler(ProtoContentBase):
     parent: ServiceCompiler
     proto_obj: MethodDescriptorProto
     path: List[int] = PLACEHOLDER
+    input_file_name: str = PLACEHOLDER
     comment_indent: int = 8
 
     def __post_init__(self) -> None:

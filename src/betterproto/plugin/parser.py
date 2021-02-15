@@ -113,7 +113,7 @@ def generate_code(
             for index, service in enumerate(proto_input_file.service):
                 read_protobuf_service(
                     service=service,
-                    path=path,
+                    index=index,
                     output_package=output_package,
                     input_file_name=proto_input_file.name,
                 )
