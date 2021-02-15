@@ -346,8 +346,6 @@ class MessageCompiler(ProtoContentBase):
         """Crawl the proto source code and retrieve comments
         for this object.
         """
-
-        pad = " " * self.comment_indent
         joined = get_comment(
             proto_file=self.proto_file,
             path=self.path,
@@ -362,9 +360,9 @@ class MessageCompiler(ProtoContentBase):
             [field.docstring for field in self.fields if hasattr(field, "docstring")]
         )
 
-        response = f'{pad}"""{joined}\n\nParameters\n----------\n{docstrings}\n\n"""'
+        response = f'"""{joined}\n\nParameters\n----------\n{docstrings}\n\n"""'
 
-        return response
+        return textwrap.indent(response, "    ")
 
 
 def is_map(
@@ -646,8 +644,6 @@ class EnumDefinitionCompiler(MessageCompiler):
         """Crawl the proto source code and retrieve comments
         for this object.
         """
-
-        pad = " " * self.comment_indent
         joined = get_comment(
             proto_file=self.proto_file,
             path=self.path,
@@ -662,9 +658,9 @@ class EnumDefinitionCompiler(MessageCompiler):
             [entry.docstring for entry in self.entries if hasattr(entry, "docstring")]
         )
 
-        response = f'{pad}"""{joined}\n\nAttributes\n----------\n{docstrings}\n\n"""'
+        response = f'"""{joined}\n\nAttributes\n----------\n{docstrings}\n\n"""'
 
-        return response
+        return textwrap.indent(response, "    ")
 
 
 @dataclass
