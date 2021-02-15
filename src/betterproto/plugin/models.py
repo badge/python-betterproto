@@ -145,10 +145,10 @@ def get_comment(
                     sci.leading_comments.replace("\n", " ").replace("  ", " ").strip()
                 )
             if sci.trailing_comments:
-                comments.append(sci.trailing_comments.replace(
-                    "\n", " "
-                ).replace("  ", " ").strip()
-    
+                comments.append(
+                    sci.trailing_comments.replace("\n", " ").replace("  ", " ").strip()
+                )
+
     # Combine leading a trailing comments if necessary; if we have
     # neither return an empty string
     if len(comments) == 0:
