@@ -614,6 +614,11 @@ class EnumDefinitionCompiler(MessageCompiler):
         value: int
         comment: str
 
+        @property
+        def docstring(self) -> str:
+            pad = " " * 4
+            return f"{self.name} : int = {self.value}\n{pad}{self.comment}"
+
     def __post_init__(self) -> None:
         # Get entries/allowed values for this Enum
         self.entries = [
@@ -621,7 +626,7 @@ class EnumDefinitionCompiler(MessageCompiler):
                 name=sanitize_name(entry_proto_value.name),
                 value=entry_proto_value.number,
                 comment=get_comment(
-                    proto_file=self.proto_file, path=self.path + [2, entry_number]
+                    proto_file=self.proto_file, path=self.path + [2, entry_number], comment_out=False
                 ),
             )
             for entry_number, entry_proto_value in enumerate(self.proto_obj.value)
@@ -635,6 +640,31 @@ class EnumDefinitionCompiler(MessageCompiler):
         As per the spec, this is the first value of the Enum.
         """
         return str(self.entries[0].value)  # ideally, should ALWAYS be int(0)!
+
+    @property
+    def docstring(self) -> str:
+        """Crawl the proto source code and retrieve comments
+        for this object.
+        """
+
+        pad = " " * self.comment_indent
+        joined = get_comment(
+            proto_file=self.proto_file,
+            path=self.path,
+            indent=0,
+            comment_out=False,
+        )
+
+        if not joined:
+            return ""
+
+        docstrings = "\n".join(
+            [entry.docstring for entry in self.entries if hasattr(entry, "docstring")]
+        )
+
+        response = f'{pad}"""{joined}\n\nAttributes\n----------\n{docstrings}\n\n"""'
+
+        return response
 
 
 @dataclass
