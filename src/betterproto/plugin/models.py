@@ -164,7 +164,7 @@ def get_comment(
     # Comment out before wrapping, so we don't end up with a first or
     # last line with too many characters
     if comment_out:
-        cmt = comment.replace('"', "`")
+        cmt = comment.replace('"', "'")
         comment = f'"""{cmt}"""'
 
     if (len(comment) < 79 - indent) or not wrap:
