@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+// Some documentation about the Test message.
+message Test {
+    double positive = 1;
+    double negative = 2;
+    double nan = 3;
+}
