@@ -112,28 +112,67 @@ PROTO_PACKED_TYPES = (
 
 
 def get_comment(
-    proto_file: "FileDescriptorProto", path: List[int], indent: int = 4
+    proto_file: "FileDescriptorProto",
+    path: List[int],
+    indent: int = 4,
+    wrap: bool = True,
+    comment_out: bool = True,
 ) -> str:
+    """Get the comment for the given proto_file, path combination
+
+    Parameters
+    ----------
+    proto_file : FileDescriptorProto
+        Proto file descriptor
+    path : List[int]
+        Path to the item
+    indent : int, default 4
+        Indent to use when wrapping (ignored if ``wrap==False``)
+    wrap : bool, default ``True``
+        Wrap the comment
+    comment_out : bool, default ``True``
+        Comment out the comment with `\"\"\"` on either end
+    """
     pad = " " * indent
+    comments = []
+
+    # Get leading and trailing comments, and remove newlines, being
+    # careful not to concatenate words
     for sci in proto_file.source_code_info.location:
-        if list(sci.path) == path and sci.leading_comments:
-            lines = textwrap.wrap(
-                sci.leading_comments.strip().replace("\n", ""), width=79 - indent
-            )
+        if list(sci.path) == path:
+            if sci.leading_comments:
+                comments.append(
+                    sci.leading_comments.replace("\n", " ").replace("  ", " ").strip()
+                )
+            if sci.trailing_comments:
+                comments.append(
+                    sci.trailing_comments.replace("\n", " ").replace("  ", " ").strip()
+                )
 
-            if path[-2] == 2 and path[-4] != 6:
-                # This is a field
-                return f"{pad}# " + f"\n{pad}# ".join(lines)
-            else:
-                # This is a message, enum, service, or method
-                if len(lines) == 1 and len(lines[0]) < 79 - indent - 6:
-                    lines[0] = lines[0].strip('"')
-                    return f'{pad}"""{lines[0]}"""'
-                else:
-                    joined = f"\n{pad}".join(lines)
-                    return f'{pad}"""\n{pad}{joined}\n{pad}"""'
+    # Combine leading a trailing comments if necessary; if we have
+    # neither return an empty string
+    if len(comments) == 0:
+        return ""
+    if len(comments) == 1:
+        comment = comments[0]
+    else:
+        comment = " ".join(comments)
 
-    return ""
+    if not wrap and not comment_out:
+        return comment
+
+    # Comment out before wrapping, so we don't end up with a first or
+    # last line with too many characters
+    if comment_out:
+        cmt = comment.replace('"', "'")
+        comment = f'"""{cmt}"""'
+
+    if (len(comment) < 79 - indent) or not wrap:
+        return textwrap.indent(comment, pad)
+
+    lines = textwrap.wrap(comment, width=79 - indent)
+
+    return textwrap.indent(f"\n".join(lines), pad)
 
 
 class ProtoContentBase:
@@ -142,6 +181,7 @@ class ProtoContentBase:
     path: List[int]
     comment_indent: int = 4
     parent: Union["betterproto.Message", "OutputTemplate"]
+    input_file_name: str = PLACEHOLDER
 
     def __post_init__(self) -> None:
         """Checks that no fake default fields were left as placeholders."""
@@ -158,10 +198,8 @@ class ProtoContentBase:
 
     @property
     def proto_file(self) -> FieldDescriptorProto:
-        current = self
-        while not isinstance(current, OutputTemplate):
-            current = current.parent
-        return current.package_proto_obj
+        template = self.output_file
+        return template.input_files_dict[self.input_file_name]
 
     @property
     def request(self) -> "PluginRequestCompiler":
@@ -211,7 +249,7 @@ class OutputTemplate:
 
     parent_request: PluginRequestCompiler
     package_proto_obj: FileDescriptorProto
-    input_files: List[str] = field(default_factory=list)
+    input_files: List[FileDescriptorProto] = field(default_factory=list)
     imports: Set[str] = field(default_factory=set)
     datetime_imports: Set[str] = field(default_factory=set)
     typing_imports: Set[str] = field(default_factory=set)
@@ -242,6 +280,17 @@ class OutputTemplate:
         return [f.name for f in self.input_files]
 
     @property
+    def input_files_dict(self) -> Dict[str, FileDescriptorProto]:
+        """Dictionary mapping filenames to their FileDescriptorProto objects
+
+        Returns
+        -------
+        Dict[str, FileDescriptorProto]
+            Dictionary mapping filenames to their FileDescriptorProto objects
+        """
+        return {f.name: f for f in self.input_files}
+
+    @property
     def python_module_imports(self) -> Set[str]:
         imports = set()
         if any(x for x in self.messages if any(x.deprecated_fields)):
@@ -256,6 +305,7 @@ class MessageCompiler(ProtoContentBase):
     parent: Union["MessageCompiler", OutputTemplate] = PLACEHOLDER
     proto_obj: DescriptorProto = PLACEHOLDER
     path: List[int] = PLACEHOLDER
+    input_file_name: str = PLACEHOLDER
     fields: List[Union["FieldCompiler", "MessageCompiler"]] = field(
         default_factory=list
     )
@@ -291,6 +341,57 @@ class MessageCompiler(ProtoContentBase):
             if f.deprecated:
                 yield f.py_name
 
+    @property
+    def docstring_params(self) -> str:
+        """Docstring parameters
+
+        Returns
+        -------
+        str
+            Docstring parameters
+        """
+        if hasattr(self, "entries"):
+            return "\n".join(
+                [
+                    entry.docstring
+                    for entry in self.entries
+                    if hasattr(entry, "docstring")
+                ]
+            )
+        if hasattr(self, "fields"):
+            return "\n".join(
+                [
+                    field.docstring
+                    for field in self.fields
+                    if hasattr(field, "docstring")
+                ]
+            )
+        raise ValueError("No `field` or `entries` attributes!")
+
+    @property
+    def docstring(self) -> str:
+        """Crawl the proto source code and retrieve comments
+        for this object.
+        """
+        joined = get_comment(
+            proto_file=self.proto_file,
+            path=self.path,
+            indent=0,
+            comment_out=False,
+        )
+
+        if not joined:
+            return ""
+
+        heading = (
+            "Attributes" if isinstance(self, EnumDefinitionCompiler) else "Parameters"
+        )
+
+        return textwrap.indent(
+            f'"""{joined}\n\n{heading}\n----------\n{self.docstring_params}\n"""',
+            "    ",
+        )
+
 
 def is_map(
     proto_field_obj: FieldDescriptorProto, parent_message: DescriptorProto
@@ -319,6 +420,7 @@ def is_oneof(proto_field_obj: FieldDescriptorProto) -> bool:
 class FieldCompiler(MessageCompiler):
     parent: MessageCompiler = PLACEHOLDER
     proto_obj: FieldDescriptorProto = PLACEHOLDER
+    input_file_name: str = PLACEHOLDER
 
     def __post_init__(self) -> None:
         # Add field to message
@@ -450,6 +552,23 @@ class FieldCompiler(MessageCompiler):
             return f"List[{self.py_type}]"
         return self.py_type
 
+    @property
+    def docstring(self) -> str:
+        """Crawl the proto source code and retrieve comments
+        for this object.
+        """
+
+        joined = get_comment(
+            proto_file=self.proto_file,
+            path=self.path,
+            indent=self.comment_indent,
+            comment_out=False,
+        )
+
+        annotation = self.annotation.replace('"', "")
+
+        return f"{self.py_name} : {annotation}\n{joined}"
+
 
 @dataclass
 class OneOfFieldCompiler(FieldCompiler):
@@ -520,6 +639,10 @@ class EnumDefinitionCompiler(MessageCompiler):
         value: int
         comment: str
 
+        @property
+        def docstring(self) -> str:
+            return f"{self.name} : int = {self.value}\n{self.comment}"
+
     def __post_init__(self) -> None:
         # Get entries/allowed values for this Enum
         self.entries = [
@@ -527,7 +650,9 @@ class EnumDefinitionCompiler(MessageCompiler):
                 name=sanitize_name(entry_proto_value.name),
                 value=entry_proto_value.number,
                 comment=get_comment(
-                    proto_file=self.proto_file, path=self.path + [2, entry_number]
+                    proto_file=self.proto_file,
+                    path=self.path + [2, entry_number],
+                    comment_out=False,
                 ),
             )
             for entry_number, entry_proto_value in enumerate(self.proto_obj.value)
@@ -548,6 +673,7 @@ class ServiceCompiler(ProtoContentBase):
     parent: OutputTemplate = PLACEHOLDER
     proto_obj: DescriptorProto = PLACEHOLDER
     path: List[int] = PLACEHOLDER
+    input_file_name: str = PLACEHOLDER
     methods: List["ServiceMethodCompiler"] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -571,6 +697,7 @@ class ServiceMethodCompiler(ProtoContentBase):
     parent: ServiceCompiler
     proto_obj: MethodDescriptorProto
     path: List[int] = PLACEHOLDER
+    input_file_name: str = PLACEHOLDER
     comment_indent: int = 8
 
     def __post_init__(self) -> None:
@@ -708,3 +835,22 @@ class ServiceMethodCompiler(ProtoContentBase):
     @property
     def server_streaming(self) -> bool:
         return self.proto_obj.server_streaming
+
+    @property
+    def docstring(self) -> str:
+        intro = get_comment(
+            proto_file=self.proto_file,
+            path=self.path,
+            indent=0,
+            comment_out=False,
+        )
+
+        pad = " " * 8
+
+        if self.py_input_message is None:
+            return textwrap.indent(f'"""{intro}"""', pad)
+
+        return textwrap.indent(
+            f'"""{intro}\n\nParameters\n----------\n{self.py_input_message.docstring_params}\n"""',
+            pad,
+        )
