@@ -1,10 +1,11 @@
 import importlib
 import json
+import math
 import os
 import sys
 from collections import namedtuple
 from types import ModuleType
-from typing import Set
+from typing import Any, Dict, List, Set
 
 import pytest
 
@@ -69,6 +70,56 @@ def module_has_entry_point(module: ModuleType):
     return any(hasattr(module, attr) for attr in ["Test", "TestStub"])
 
 
+def list_replace_nans(l: List) -> List[Any]:
+    """Replace float("nan") in a list with the string "NaN"
+
+    Parameters
+    ----------
+    l : List
+        List to update
+
+    Returns
+    -------
+    List[Any]
+        Updated list
+    """
+    x = []
+    for e in l:
+        if isinstance(e, list):
+            e = list_replace_nans(e)
+        elif isinstance(e, dict):
+            e = dict_replace_nans(e)
+        elif isinstance(e, float) and math.isnan(e):
+            e = betterproto.NAN
+        x.append(e)
+    return x
+
+
+def dict_replace_nans(d: Dict[Any, Any]) -> Dict[Any, Any]:
+    """Replace float("nan") in a dictionary with the string "NaN"
+
+    Parameters
+    ----------
+    l : Dict[Any, Any]
+        Dictionary to update
+
+    Returns
+    -------
+    Dict[Any, Any]
+        Updated dictionary
+    """
+    x = {}
+    for k, v in d.items():
+        if isinstance(v, dict):
+            v = dict_replace_nans(v)
+        elif isinstance(v, list):
+            v = list_replace_nans(v)
+        elif isinstance(v, float) and math.isnan(v):
+            v = betterproto.NAN
+        x[k] = v
+    return x
+
+
 @pytest.fixture
 def test_data(request):
     test_case_name = request.param
@@ -131,7 +182,9 @@ def test_message_json(repeat, test_data: TestData) -> None:
         message.from_json(json_data)
         message_json = message.to_json(0)
 
-        assert json.loads(message_json) == json.loads(json_data)
+        assert dict_replace_nans(json.loads(message_json)) == dict_replace_nans(
+            json.loads(json_data)
+        )
 
 
 @pytest.mark.parametrize("test_data", test_cases.services, indirect=True)
@@ -162,6 +215,6 @@ def test_binary_compatibility(repeat, test_data: TestData) -> None:
         assert bytes(plugin_instance_from_binary) == reference_binary_output
 
         assert plugin_instance_from_json == plugin_instance_from_binary
-        assert (
-            plugin_instance_from_json.to_dict() == plugin_instance_from_binary.to_dict()
-        )
+        assert dict_replace_nans(
+            plugin_instance_from_json.to_dict()
+        ) == dict_replace_nans(plugin_instance_from_binary.to_dict())
